@@ -2,12 +2,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Mic, SendHorizontal } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { Link } from "react-router";
 
 const Chat = () => {
     const [messages, setMessages] = useState([]);
     const [inputMessage, setInputMessage] = useState("");
 
-    const [isIndexing, setIsIndexing] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
 
@@ -19,25 +19,6 @@ const Chat = () => {
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
-
-    // Handle the indexing of documents
-    const handleIndexing = async () => {
-        setIsIndexing(true);
-
-        try {
-            const response = await fetch("http://127.0.0.1:8000/api/index/documents", {
-                method: "POST"
-            });
-            if (!response.ok)
-                throw new Error(`Indexing request failed with status ${response.status}`);
-
-            alert("Documents indexed successfully!");
-        } catch (error) {
-            alert(`Failed to index documents: ${error.message}`);
-        } finally {
-            setIsIndexing(false);
-        }
-    };
 
     // Handle sending text messages
     const sendText = async (event) => {
@@ -187,12 +168,11 @@ const Chat = () => {
                 <header className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
                     <h1 className="text-base font-semibold text-gray-950">RAG Chatbot</h1>
 
-                    <button
-                        onClick={handleIndexing}
-                        disabled={isIndexing}
-                        className="rounded-lg bg-gray-200/60 px-3.5 py-2 text-sm font-semibold text-gray-950 transition-colors hover:bg-gray-200 disabled:opacity-50">
-                        {isIndexing ? "Indexing..." : "Index Documents"}
-                    </button>
+                    <Link
+                        to={"/data"}
+                        className="rounded-lg bg-gray-100 px-3.5 py-2.5 text-sm leading-none font-medium text-gray-900">
+                        Knowledge Base
+                    </Link>
                 </header>
 
                 {/* Chat messages */}
@@ -257,7 +237,7 @@ const Chat = () => {
                             value={inputMessage}
                             onChange={(event) => setInputMessage(event.target.value)}
                             placeholder="Message"
-                            className="flex-1 rounded-full bg-gray-100 px-4 py-3 text-sm font-normal text-gray-900 placeholder-gray-500 focus:ring focus:ring-gray-300 focus:outline-none"
+                            className="flex-1 rounded-full bg-gray-100 px-4 py-3 !text-sm font-normal text-gray-900 placeholder-gray-500 focus:ring focus:ring-gray-300 focus:outline-none"
                             disabled={isLoading}
                         />
 
