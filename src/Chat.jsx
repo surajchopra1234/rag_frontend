@@ -25,7 +25,7 @@ const Chat = () => {
         setIsIndexing(true);
 
         try {
-            const response = await fetch("http://127.0.0.1:8000/api/index/documents/", {
+            const response = await fetch("http://127.0.0.1:8000/api/index/documents", {
                 method: "POST"
             });
             if (!response.ok)
@@ -55,7 +55,7 @@ const Chat = () => {
 
         setIsLoading(true);
         try {
-            const response = await fetch("http://127.0.0.1:8000/api/queries/text/", {
+            const response = await fetch("http://127.0.0.1:8000/api/queries/text", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ query })
@@ -94,11 +94,11 @@ const Chat = () => {
     const sendAudio = async (audioBlob) => {
         // Audio messages are sent in wav format
         const formData = new FormData();
-        formData.append("audioFile", audioBlob, "recording.wav");
+        formData.append("audio_file", audioBlob, "recording.wav");
 
         setIsLoading(true);
         try {
-            const response = await fetch("http://127.0.0.1:8000/api/queries/audio/", {
+            const response = await fetch("http://127.0.0.1:8000/api/queries/audio", {
                 method: "POST",
                 body: formData
             });
