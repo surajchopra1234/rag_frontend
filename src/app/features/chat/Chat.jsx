@@ -1,10 +1,11 @@
 // Import necessary libraries
 import React, { useState, useEffect, useRef } from "react";
-import { Mic, SendHorizontal } from "lucide-react";
+import { Mic, Pause, Play, SendHorizontal } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { Link } from "react-router";
 
 const Chat = () => {
+    const [nextMessageId, setNextMessageId] = useState(1);
     const [messages, setMessages] = useState([]);
     const [inputMessage, setInputMessage] = useState("");
 
@@ -25,11 +26,10 @@ const Chat = () => {
         event.preventDefault();
         if (isLoading || !inputMessage.trim()) return;
 
-        setMessages((previousMessages) => [
-            ...previousMessages,
-            { sender: "user", type: "text", text: inputMessage },
-            { sender: "bot", type: "text", text: "" }
-        ]);
+        const userMessage = { id: nextMessageId, sender: "user", type: "text", text: inputMessage };
+        const botMessage = { id: nextMessageId + 1, sender: "bot", type: "text", text: "" };
+        setNextMessageId((prev) => prev + 2);
+        setMessages((previousMessages) => [...previousMessages, userMessage, botMessage]);
 
         const query = inputMessage;
         setInputMessage("");
@@ -53,26 +53,43 @@ const Chat = () => {
 
                 const chunk = decoder.decode(value, { stream: true });
 
-                setMessages((messages) => {
-                    const lastMessage = messages[messages.length - 1];
-                    const text = lastMessage.text + chunk;
-                    return [...messages.slice(0, -1), { ...lastMessage, text }];
-                });
+                setMessages((messages) =>
+                    messages.map((message) => {
+                        return message.id === botMessage.id
+                            ? { ...message, text: message.text + chunk }
+                            : message;
+                    })
+                );
             }
         } catch {
-            setMessages((messages) => {
-                const lastMessage = messages[messages.length - 1];
-                const text =
-                    "Sorry, I encountered an error processing the audio. Please try again.";
-                return [...messages.slice(0, -1), { ...lastMessage, text }];
-            });
+            setMessages((messages) =>
+                messages.map((message) => {
+                    return message.id === botMessage.id
+                        ? { ...message, text: "Sorry, I encountered an error. Please try again." }
+                        : message;
+                })
+            );
         } finally {
             setIsLoading(false);
         }
     };
 
     // Handle sending audio messages
-    const sendAudio = async (audioBlob) => {
+    const sendAudio = async (audioBlob, audioUrl) => {
+        if (isLoading) return;
+
+        const userMessage = { id: nextMessageId, sender: "user", type: "audio", audioUrl };
+        const botMessage = {
+            id: nextMessageId + 1,
+            sender: "bot",
+            type: "text",
+            text: "",
+            audioInstance: null,
+            audioState: "loading"
+        };
+        setNextMessageId((prev) => prev + 2);
+        setMessages((prev) => [...prev, userMessage, botMessage]);
+
         // Audio messages are sent in wav format
         const formData = new FormData();
         formData.append("audio_file", audioBlob, "recording.wav");
@@ -89,27 +106,88 @@ const Chat = () => {
             const decoder = new TextDecoder();
             const reader = response.body.getReader();
 
+            let responseText = "";
+
             while (true) {
                 const { value, done } = await reader.read();
                 if (done) break;
 
                 const chunk = decoder.decode(value, { stream: true });
-                setMessages((messages) => {
-                    const lastMessage = messages[messages.length - 1];
-                    const text = lastMessage.text + chunk;
-                    return [...messages.slice(0, -1), { ...lastMessage, text }];
-                });
+                responseText += chunk;
+
+                setMessages((messages) =>
+                    messages.map((message) => {
+                        return message.id === botMessage.id
+                            ? { ...message, text: message.text + chunk }
+                            : message;
+                    })
+                );
             }
-        } catch {
-            setMessages((messages) => {
-                const lastMessage = messages[messages.length - 1];
-                const text =
-                    "Sorry, I encountered an error processing the audio. Please try again.";
-                return [...messages.slice(0, -1), { ...lastMessage, text }];
+
+            // Send the full text to the text-to-speech endpoint
+            const ttsResponse = await fetch("http://127.0.0.1:8000/api/text-to-speech", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query: responseText })
             });
+
+            if (!ttsResponse.ok)
+                throw new Error(`TTS API request failed with status ${ttsResponse.status}`);
+
+            // Convert response to audio and play it
+            const receivedAudioBlob = await ttsResponse.blob();
+            const receivedAudioUrl = URL.createObjectURL(receivedAudioBlob);
+
+            const audio = new Audio(receivedAudioUrl);
+            audio.play();
+
+            audio.onended = () => {
+                setMessages((messages) =>
+                    messages.map((message) => {
+                        return message.id === botMessage.id
+                            ? { ...message, audioState: "paused" }
+                            : message;
+                    })
+                );
+            };
+
+            setMessages((messages) =>
+                messages.map((message) => {
+                    return message.id === botMessage.id
+                        ? { ...message, audioInstance: audio, audioState: "playing" }
+                        : message;
+                })
+            );
+        } catch {
+            setMessages((messages) =>
+                messages.map((message) => {
+                    return message.id === botMessage.id
+                        ? { ...message, text: "Sorry, I encountered an error. Please try again." }
+                        : message;
+                })
+            );
         } finally {
             setIsLoading(false);
         }
+    };
+
+    // Updated function to handle audio playback within message objects
+    const handleAudioPlayback = (index, action) => {
+        setMessages((messages) => {
+            return messages.map((message, i) => {
+                if (index === i) {
+                    if (action === "play") {
+                        message.audioInstance.play();
+                        return { ...message, audioState: "playing" };
+                    } else if (action === "pause") {
+                        message.audioInstance.pause();
+                        return { ...message, audioState: "paused" };
+                    }
+                }
+
+                return message;
+            });
+        });
     };
 
     // Handle the start of audio recording
@@ -135,11 +213,7 @@ const Chat = () => {
                 const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
                 const audioUrl = URL.createObjectURL(audioBlob);
 
-                const userMessage = { sender: "user", type: "audio", audioUrl };
-                const botMessage = { sender: "bot", type: "text", text: "" };
-                setMessages((prev) => [...prev, userMessage, botMessage]);
-
-                sendAudio(audioBlob);
+                sendAudio(audioBlob, audioUrl);
 
                 // Stop all tracks on the stream to release the microphone
                 mediaStream.getTracks().forEach((track) => track.stop());
@@ -184,12 +258,12 @@ const Chat = () => {
                             key={index}
                             className={`flex items-end ${message.sender === "bot" ? "justify-start" : "justify-end"}`}>
                             <div
-                                className={`max-w-md rounded-2xl px-4 py-3 ${
+                                className={`relative max-w-md rounded-2xl px-4 py-3 ${
                                     message.sender === "bot"
-                                        ? "rounded-bl-none bg-gray-100 shadow-xs"
+                                        ? "rounded-bl-none bg-gray-100"
                                         : message.type === "audio"
                                           ? "rounded-bl-none"
-                                          : "rounded-br-none border border-gray-200 shadow-xs"
+                                          : "rounded-br-none border border-gray-200"
                                 }`}>
                                 {message.sender === "bot" && message.text === "" ? (
                                     // Render loading dots for bot's pending response
@@ -202,8 +276,62 @@ const Chat = () => {
                                     // Render the audio player for user's audio messages
                                     <audio src={message.audioUrl} controls className="w-64" />
                                 ) : (
-                                    <div className="prose-sm">
-                                        <ReactMarkdown>{message.text}</ReactMarkdown>
+                                    <div>
+                                        {message.sender === "bot" &&
+                                            message.audioState &&
+                                            (message.audioState === "loading" ? (
+                                                <div className="absolute top-0 -right-10 rounded-full bg-gray-100 p-2">
+                                                    <div className="size-4 animate-spin rounded-full border-[3px] border-gray-300 border-t-gray-700"></div>
+                                                </div>
+                                            ) : message.audioState === "playing" ? (
+                                                <div className="absolute top-0 -right-10 rounded-full bg-gray-100 hover:bg-gray-200">
+                                                    <button
+                                                        onClick={() =>
+                                                            handleAudioPlayback(index, "pause")
+                                                        }
+                                                        className="p-2 text-gray-700">
+                                                        <svg
+                                                            width="16"
+                                                            height="16"
+                                                            viewBox="0 0 24 24"
+                                                            fill="none"
+                                                            xmlns="http://www.w3.org/2000/svg">
+                                                            <path
+                                                                d="M17.7931 20.3H15.3793C14.7156 20.3 14.1724 19.76 14.1724 19.1V4.69998C14.1724 4.04 14.7156 3.5 15.3793 3.5H17.7931C18.4568 3.5 19 4.04 19 4.69998V19.1C19 19.76 18.4568 20.3 17.7931 20.3Z"
+                                                                fill="currentColor"
+                                                            />
+                                                            <path
+                                                                d="M8.62067 20.3H6.20693C5.54316 20.3 5 19.76 5 19.1V4.69998C5 4.04 5.54316 3.5 6.20693 3.5H8.62067C9.28444 3.5 9.8276 4.04 9.8276 4.69998V19.1C9.8276 19.76 9.28444 20.3 8.62067 20.3Z"
+                                                                fill="#121330"
+                                                            />
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="absolute top-0 -right-10 rounded-full bg-gray-100 hover:bg-gray-200">
+                                                    <button
+                                                        onClick={() =>
+                                                            handleAudioPlayback(index, "play")
+                                                        }
+                                                        className="p-2 text-gray-700">
+                                                        <svg
+                                                            width="16"
+                                                            height="16"
+                                                            viewBox="0 0 25 25"
+                                                            fill="none"
+                                                            xmlns="http://www.w3.org/2000/svg">
+                                                            <path
+                                                                d="M19.575 11.4621L6.90002 3.68711C6.07502 3.17459 5 3.77465 5 4.76213V20.2995C5 21.2745 6.07502 21.8745 6.90002 21.362L19.5625 13.5996C20.3625 13.0996 20.3625 11.9496 19.575 11.4621Z"
+                                                                fill="currentColor"
+                                                            />
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            ))}
+
+                                        <div className="prose-sm">
+                                            <ReactMarkdown>{message.text}</ReactMarkdown>
+                                        </div>
                                     </div>
                                 )}
                             </div>
