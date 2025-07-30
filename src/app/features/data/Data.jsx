@@ -1,8 +1,9 @@
 // Import modules
 import { useState, useEffect } from "react";
 import { Dropzone } from "@mantine/dropzone";
-import { Trash2, Upload } from "lucide-react";
+import { ArrowLeft, Trash2, Upload } from "lucide-react";
 import { LoadingOverlay } from "@mantine/core";
+import { Link } from "react-router";
 
 const PDFIcon = () => (
     <svg width="30" height="40" viewBox="0 0 30 40" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -57,6 +58,7 @@ const Data = () => {
 
     const [isLoading, setIsLoading] = useState(true);
     const [isUploading, setIsUploading] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     // Fetch the documents
     useEffect(() => {
@@ -123,16 +125,49 @@ const Data = () => {
     };
 
     // Handle document deletion
-    const handleDelete = (id) => {
-        console.log(id);
+    const handleDelete = async (name, type) => {
+        setIsDeleting(true);
+
+        try {
+            const response = await fetch("http://127.0.0.1:8000/api/documents", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ file_name: `${name}.${type}` })
+            });
+
+            if (!response.ok) throw new Error(`Failed to delete document: ${response.statusText}`);
+
+            // Remove the deleted document from the state
+            setDocuments((docs) => docs.filter((doc) => doc.name !== name || doc.type !== type));
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setIsDeleting(false);
+        }
     };
 
     return (
         <div className="flex h-screen items-center justify-center bg-gray-100 sm:py-8">
             <div className="flex h-full w-full max-w-2xl flex-col overflow-hidden bg-white sm:rounded-2xl sm:shadow-sm">
                 <div className="space-y-5 p-5">
+                    {/* Loading overlay */}
+                    <LoadingOverlay
+                        visible={isUploading || isDeleting}
+                        zIndex={1000}
+                        overlayProps={{ radius: "sm", blur: 2 }}
+                        loaderProps={{ color: "gray", type: "bars" }}
+                    />
+
                     {/* Heading */}
-                    <h2 className="text-base font-semibold text-gray-950">Knowledge Base</h2>
+                    <div className="flex items-center space-x-2">
+                        <Link to="/" className="flex items-center justify-center p-2">
+                            <ArrowLeft size={20} className="text-gray-950" />
+                        </Link>
+
+                        <h2 className="pb-[3px] text-base font-semibold text-gray-950">
+                            Knowledge Base
+                        </h2>
+                    </div>
 
                     {/* Dropzone */}
                     <Dropzone
@@ -143,7 +178,6 @@ const Data = () => {
                         }}
                         maxSize={5 * 1024 * 1024}
                         maxFiles={1}
-                        loading={isUploading}
                         disabled={isLoading}
                         classNames={{
                             root: "!border-dashed !rounded-lg !overflow-hidden !border-[1.5px] !border-gray-200 !hover:bg-gray-50 !data-accept:bg-green-50 !data-reject:bg-red-50"
@@ -245,7 +279,9 @@ const Data = () => {
                                         {/* Delete Button */}
                                         <button
                                             className="rounded-md bg-red-100/55 p-2 text-red-500 hover:bg-red-100"
-                                            onClick={() => handleDelete(document.name)}>
+                                            onClick={() =>
+                                                handleDelete(document.name, document.type)
+                                            }>
                                             <Trash2 size={18} />
                                         </button>
                                     </div>
