@@ -4,7 +4,14 @@ import { Mic, Pause, Play, SendHorizontal } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { Link } from "react-router";
 
+const formatFileSize = (bytes) => {
+    if (bytes < 1024) return bytes + " B";
+    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+    else return (bytes / 1048576).toFixed(1) + " MB";
+};
+
 const Chat = () => {
+    const [documents, setDocuments] = useState([]);
     const [nextMessageId, setNextMessageId] = useState(1);
     const [messages, setMessages] = useState([]);
     const [inputMessage, setInputMessage] = useState("");
@@ -16,10 +23,44 @@ const Chat = () => {
     const mediaRecorderRef = useRef(null);
     const audioChunksRef = useRef([]);
 
+    // Fetch the documents
+    useEffect(() => {
+        fetchDocuments().then();
+    }, []);
+
     // Auto-scrolling to the bottom
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
+
+    // Function to fetch documents from the API
+    const fetchDocuments = async () => {
+        setIsLoading(true);
+
+        try {
+            const response = await fetch("http://127.0.0.1:8000/api/documents", {
+                method: "GET",
+                headers: { "Content-Type": "application/json" }
+            });
+
+            if (!response.ok) throw new Error(`Failed to fetch documents: ${response.statusText}`);
+
+            const data = await response.json();
+            const formattedDocuments = data.documents.map((doc) => ({
+                name: doc.file_name,
+                type: doc.file_extension.substring(1),
+                size: formatFileSize(doc.size),
+                dateUploaded: new Date(doc.date).toISOString().split("T")[0],
+                crawled_urls: doc?.crawled_urls ?? null
+            }));
+
+            setDocuments(formattedDocuments);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     // Handle sending text messages
     const sendText = async (event) => {
@@ -239,19 +280,43 @@ const Chat = () => {
         <div className="flex h-screen items-center justify-center bg-gray-100 sm:py-8">
             <div className="flex h-full w-full max-w-2xl flex-col overflow-hidden bg-white sm:rounded-2xl sm:shadow-sm">
                 {/* Header */}
-                <header className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-                    <h1 className="text-base font-semibold text-gray-950">RAG Chatbot</h1>
+                <header>
+                    {/* Header with title and link to sources */}
+                    <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3.5">
+                        <h1 className="text-base font-semibold text-gray-950">RAG Chatbot</h1>
 
-                    <Link
-                        to={"/data"}
-                        className="rounded-lg bg-gray-100 px-3.5 py-2.5 text-sm leading-none font-medium text-gray-900">
-                        Knowledge Base
-                    </Link>
+                        <Link
+                            to={"/sources"}
+                            className="rounded-lg bg-gray-100 px-3.5 py-2.5 text-sm leading-none font-medium text-gray-900">
+                            Sources
+                        </Link>
+                    </div>
+
+                    {/* Document chips */}
+                    {documents.length > 0 && (
+                        <div className="flex flex-wrap gap-2.5 border-b border-gray-200 bg-gray-50 px-4 py-3.5">
+                            {documents.map((doc, index) => (
+                                <div
+                                    key={index}
+                                    className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs font-normal text-gray-800 shadow-xs">
+                                    <span>{"📁"}</span>
+
+                                    <span className="max-w-[100px] truncate">
+                                        {doc.crawled_urls === null
+                                            ? doc.name
+                                            : doc.name.split("_").join(".")}
+                                    </span>
+
+                                    <span className="text-gray-400">{doc.size}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </header>
 
                 {/* Chat messages */}
-                <main className="flex-1 space-y-4 overflow-y-auto p-6">
-                    <div className="pb-2 text-center text-sm font-normal text-gray-500">Today</div>
+                <main className="flex-1 space-y-4 overflow-y-auto p-5">
+                    <div className="text-center text-[13px] font-normal text-gray-500">Today</div>
 
                     {messages.map((message, index) => (
                         <div
@@ -289,7 +354,7 @@ const Chat = () => {
                                                         onClick={() =>
                                                             handleAudioPlayback(index, "pause")
                                                         }
-                                                        className="p-2 text-gray-700">
+                                                        className="p-2 text-gray-900">
                                                         <svg
                                                             width="16"
                                                             height="16"
@@ -313,7 +378,7 @@ const Chat = () => {
                                                         onClick={() =>
                                                             handleAudioPlayback(index, "play")
                                                         }
-                                                        className="p-2 text-gray-700">
+                                                        className="p-2 text-gray-900">
                                                         <svg
                                                             width="16"
                                                             height="16"

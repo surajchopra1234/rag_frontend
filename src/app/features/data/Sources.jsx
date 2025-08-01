@@ -68,7 +68,7 @@ const formatFileSize = (bytes) => {
     else return (bytes / 1048576).toFixed(1) + " MB";
 };
 
-const Data = () => {
+const Sources = () => {
     const [documents, setDocuments] = useState([]);
     const [url, setUrl] = useState("");
 
@@ -164,8 +164,11 @@ const Data = () => {
         }
     };
 
-    // Delete a document
+    // Delete the document
     const deleteDocument = async (name, type) => {
+        // Confirm the document deletion
+        if (!window.confirm("Are you sure you want to delete this document?")) return;
+
         setIsDeleting(true);
 
         try {
@@ -191,14 +194,12 @@ const Data = () => {
             <div className="flex h-full w-full max-w-2xl flex-col overflow-hidden bg-white sm:rounded-2xl sm:shadow-sm">
                 <div className="space-y-5 p-5">
                     {/* Heading */}
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-1">
                         <Link to="/" className="flex items-center justify-center p-2">
                             <ArrowLeft size={20} className="text-gray-950" />
                         </Link>
 
-                        <h2 className="pb-[3px] text-base font-semibold text-gray-950">
-                            Knowledge Base
-                        </h2>
+                        <h2 className="pb-[3px] text-base font-semibold text-gray-950">Sources</h2>
                     </div>
 
                     {/* Dropzone */}
@@ -300,15 +301,14 @@ const Data = () => {
                         </p>
                     ) : (
                         <div className="grid grid-cols-2 gap-4 pt-1.5">
-                            {documents.map((document) => (
-                                <div key={document.name} className="col-span-1">
+                            {documents.map((doc) => (
+                                <div key={doc.name} className="col-span-1">
                                     <div className="flex items-center space-x-4 rounded-lg p-3.5 ring ring-gray-200">
                                         {/* File Icon */}
                                         <div>
-                                            {document.type === "pdf" ? (
+                                            {doc.type === "pdf" ? (
                                                 <PDFIcon />
-                                            ) : document.type === "txt" &&
-                                              document.crawled_urls === null ? (
+                                            ) : doc.type === "txt" && doc.crawled_urls === null ? (
                                                 <TXTIcon />
                                             ) : (
                                                 <URLIcon />
@@ -318,21 +318,21 @@ const Data = () => {
                                         {/* File Details */}
                                         <div className="flex-1 space-y-1 overflow-hidden">
                                             <div className="flex items-center space-x-2">
-                                                {document.crawled_urls === null ? (
+                                                {doc.crawled_urls === null ? (
                                                     <p className="block truncate text-sm font-medium text-gray-950 capitalize">
-                                                        {document.name}
+                                                        {doc.name}
                                                     </p>
                                                 ) : (
                                                     <p className="block truncate text-sm font-medium text-gray-950">
-                                                        {document.name.split("_").join(".")}
+                                                        {doc.name.split("_").join(".")}
                                                     </p>
                                                 )}
 
-                                                {document.crawled_urls !== null && (
+                                                {doc.crawled_urls !== null && (
                                                     <button
                                                         onClick={() => {
                                                             setSelectedDocumentUrls(
-                                                                document.crawled_urls
+                                                                doc.crawled_urls
                                                             );
                                                             open();
                                                         }}
@@ -344,13 +344,13 @@ const Data = () => {
 
                                             <div className="flex items-center space-x-1.5">
                                                 <span className="text-xs font-normal text-gray-500">
-                                                    {document.size}
+                                                    {doc.size}
                                                 </span>
                                                 <span className="text-xs font-normal text-gray-500">
                                                     •
                                                 </span>
                                                 <span className="text-xs font-normal text-gray-500">
-                                                    {document.dateUploaded}
+                                                    {doc.dateUploaded}
                                                 </span>
                                             </div>
                                         </div>
@@ -358,9 +358,7 @@ const Data = () => {
                                         {/* Delete Button */}
                                         <button
                                             className="rounded-md bg-red-100/55 p-2 text-red-500 hover:bg-red-100"
-                                            onClick={() =>
-                                                deleteDocument(document.name, document.type)
-                                            }>
+                                            onClick={() => deleteDocument(doc.name, doc.type)}>
                                             <Trash2 size={18} />
                                         </button>
                                     </div>
@@ -406,4 +404,4 @@ const Data = () => {
     );
 };
 
-export default Data;
+export default Sources;
