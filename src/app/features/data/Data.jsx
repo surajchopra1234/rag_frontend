@@ -2,7 +2,8 @@
 import { useState, useEffect } from "react";
 import { Dropzone } from "@mantine/dropzone";
 import { ArrowLeft, Trash2, Upload } from "lucide-react";
-import { LoadingOverlay } from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
+import { LoadingOverlay, Modal } from "@mantine/core";
 import { Link } from "react-router";
 
 const PDFIcon = () => (
@@ -47,6 +48,20 @@ const TXTIcon = () => (
     </svg>
 );
 
+const URLIcon = () => (
+    <svg width="30" height="40" viewBox="0 0 30 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path
+            d="M5.22217 0H18.6335L30 11.8141V34.7926C30 37.6712 27.6645 40 24.7878 40H5.22217C2.33544 40 8.24928e-10 37.6712 8.24928e-10 34.7926V5.20738C-5.06826e-05 2.32883 2.33539 0 5.22217 0Z"
+            fill="#F0B70C"
+        />
+        <path d="M18.6235 0V11.7241H30L18.6235 0Z" fill="#F5CA49" />
+        <path
+            d="M11.7613 22V26.7852C11.7613 27.328 11.6464 27.7995 11.4145 28.1963C11.1851 28.5911 10.8522 28.8946 10.4198 29.1028C9.9894 29.3085 9.47763 29.4136 8.88913 29.4136C7.99958 29.4136 7.29616 29.1817 6.7844 28.7199C6.27263 28.2582 6.01187 27.6248 6 26.8213V22H7.77443V26.8573C7.79351 27.6561 8.16663 28.0577 8.8887 28.0577C9.25461 28.0577 9.52979 27.9572 9.71635 27.7562C9.90545 27.5552 9.99873 27.2275 9.99873 26.7755V22H11.7613ZM15.5781 26.7255H14.6237V29.3131H12.8611V22H15.738C16.6059 22 17.283 22.1938 17.7732 22.5762C18.2612 22.9612 18.505 23.5039 18.505 24.2073C18.505 24.7166 18.402 25.1376 18.1963 25.4725C17.9907 25.8075 17.6676 26.0776 17.23 26.2858L18.756 29.2368V29.3131H16.8692L15.5781 26.7255ZM14.6241 25.3695H15.7384C16.0734 25.3695 16.3269 25.2809 16.494 25.1066C16.6636 24.9298 16.7475 24.6835 16.7475 24.3676C16.7475 24.0517 16.664 23.8054 16.4914 23.626C16.3218 23.4467 16.0704 23.3559 15.738 23.3559H14.6237L14.6241 25.3695ZM21.3347 27.9572H24.4032V29.3131H19.5722V22H21.3347V27.9572Z"
+            fill="white"
+        />
+    </svg>
+);
+
 const formatFileSize = (bytes) => {
     if (bytes < 1024) return bytes + " B";
     else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
@@ -55,10 +70,15 @@ const formatFileSize = (bytes) => {
 
 const Data = () => {
     const [documents, setDocuments] = useState([]);
+    const [url, setUrl] = useState("");
 
     const [isLoading, setIsLoading] = useState(true);
     const [isUploading, setIsUploading] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [isScraping, setIsScraping] = useState(false);
+
+    const [opened, { open, close }] = useDisclosure(false);
+    const [selectedDocumentUrls, setSelectedDocumentUrls] = useState([]);
 
     // Fetch the documents
     useEffect(() => {
@@ -82,7 +102,8 @@ const Data = () => {
                 name: doc.file_name,
                 type: doc.file_extension.substring(1),
                 size: formatFileSize(doc.size),
-                dateUploaded: new Date(doc.date).toISOString().split("T")[0]
+                dateUploaded: new Date(doc.date).toISOString().split("T")[0],
+                crawled_urls: doc?.crawled_urls ?? null
             }));
 
             setDocuments(formattedDocuments);
@@ -108,15 +129,8 @@ const Data = () => {
 
             if (!response.ok) throw new Error(`Failed to upload file: ${response.statusText}`);
 
-            const data = await response.json();
-            const formattedDocument = {
-                name: data.document.file_name,
-                type: data.document.file_extension.substring(1),
-                size: formatFileSize(data.document.size),
-                dateUploaded: new Date(data.document.date).toISOString().split("T")[0]
-            };
-
-            setDocuments((prev) => [formattedDocument, ...prev]);
+            // Refresh the list to show the new document
+            await fetchDocuments();
         } catch (err) {
             console.error(err);
         } finally {
@@ -124,8 +138,34 @@ const Data = () => {
         }
     };
 
-    // Handle document deletion
-    const handleDelete = async (name, type) => {
+    // Handle URL scraping
+    const handleUrl = async () => {
+        setIsScraping(true);
+
+        try {
+            const response = await fetch("http://127.0.0.1:8000/api/documents/url", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ url })
+            });
+
+            if (!response.ok) throw new Error(`Failed to scrape URL: ${response.statusText}`);
+
+            // Alert the user with the response message
+            const data = await response.json();
+            alert(data.message);
+
+            // Clear the URL input
+            setUrl("");
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setIsScraping(false);
+        }
+    };
+
+    // Delete a document
+    const deleteDocument = async (name, type) => {
         setIsDeleting(true);
 
         try {
@@ -150,14 +190,6 @@ const Data = () => {
         <div className="flex h-screen items-center justify-center bg-gray-100 sm:py-8">
             <div className="flex h-full w-full max-w-2xl flex-col overflow-hidden bg-white sm:rounded-2xl sm:shadow-sm">
                 <div className="space-y-5 p-5">
-                    {/* Loading overlay */}
-                    <LoadingOverlay
-                        visible={isUploading || isDeleting}
-                        zIndex={1000}
-                        overlayProps={{ radius: "sm", blur: 2 }}
-                        loaderProps={{ color: "gray", type: "bars" }}
-                    />
-
                     {/* Heading */}
                     <div className="flex items-center space-x-2">
                         <Link to="/" className="flex items-center justify-center p-2">
@@ -238,6 +270,25 @@ const Data = () => {
                         </div>
                     </Dropzone>
 
+                    {/* URL Scraper Input */}
+                    <div className="flex items-center space-x-2 pt-1.5">
+                        <input
+                            type="url"
+                            value={url}
+                            onChange={(e) => setUrl(e.target.value)}
+                            placeholder="Enter a URL to scrape and add to knowledge base"
+                            className="flex-1 rounded-lg px-3.5 py-2.5 !text-sm font-normal text-gray-950 placeholder-gray-400 ring-1 ring-gray-200 focus:ring-gray-300 focus:outline-none"
+                            disabled={isLoading}
+                        />
+
+                        <button
+                            onClick={handleUrl}
+                            disabled={!url.trim() || isLoading}
+                            className="flex items-center justify-center rounded-lg bg-gray-100 px-4 py-2.5 !text-sm !font-semibold text-gray-800 disabled:opacity-50">
+                            Scrape URL
+                        </button>
+                    </div>
+
                     {/* Uploaded files list */}
                     {isLoading ? (
                         <p className="py-6 text-center text-sm font-normal text-gray-500">
@@ -254,14 +305,42 @@ const Data = () => {
                                     <div className="flex items-center space-x-4 rounded-lg p-3.5 ring ring-gray-200">
                                         {/* File Icon */}
                                         <div>
-                                            {document.type === "txt" ? <TXTIcon /> : <PDFIcon />}
+                                            {document.type === "pdf" ? (
+                                                <PDFIcon />
+                                            ) : document.type === "txt" &&
+                                              document.crawled_urls === null ? (
+                                                <TXTIcon />
+                                            ) : (
+                                                <URLIcon />
+                                            )}
                                         </div>
 
                                         {/* File Details */}
                                         <div className="flex-1 space-y-1 overflow-hidden">
-                                            <p className="truncate text-sm font-medium text-gray-950 capitalize">
-                                                {document.name}
-                                            </p>
+                                            <div className="flex items-center space-x-2">
+                                                {document.crawled_urls === null ? (
+                                                    <p className="block truncate text-sm font-medium text-gray-950 capitalize">
+                                                        {document.name}
+                                                    </p>
+                                                ) : (
+                                                    <p className="block truncate text-sm font-medium text-gray-950">
+                                                        {document.name.split("_").join(".")}
+                                                    </p>
+                                                )}
+
+                                                {document.crawled_urls !== null && (
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedDocumentUrls(
+                                                                document.crawled_urls
+                                                            );
+                                                            open();
+                                                        }}
+                                                        className="cursor-pointer rounded-xl bg-gray-100 px-2 py-1.5 !text-[11px] !leading-none !font-medium !text-gray-500 hover:bg-gray-200/80">
+                                                        URLs
+                                                    </button>
+                                                )}
+                                            </div>
 
                                             <div className="flex items-center space-x-1.5">
                                                 <span className="text-xs font-normal text-gray-500">
@@ -280,7 +359,7 @@ const Data = () => {
                                         <button
                                             className="rounded-md bg-red-100/55 p-2 text-red-500 hover:bg-red-100"
                                             onClick={() =>
-                                                handleDelete(document.name, document.type)
+                                                deleteDocument(document.name, document.type)
                                             }>
                                             <Trash2 size={18} />
                                         </button>
@@ -289,6 +368,38 @@ const Data = () => {
                             ))}
                         </div>
                     )}
+
+                    {/* Loading overlay */}
+                    <LoadingOverlay
+                        visible={isUploading || isDeleting || isScraping}
+                        zIndex={1000}
+                        overlayProps={{ radius: "sm", blur: 2 }}
+                        loaderProps={{ color: "gray", type: "bars" }}
+                    />
+
+                    {/* Modal for displaying crawled URLs */}
+                    <Modal opened={opened} onClose={close} title="Scraped URLs" centered size="xl">
+                        <div className="space-y-2 overflow-hidden p-2">
+                            {selectedDocumentUrls && selectedDocumentUrls.length > 0 ? (
+                                selectedDocumentUrls.map((crawledUrl, index) => (
+                                    <a
+                                        key={index}
+                                        href={crawledUrl}
+                                        target="_blank"
+                                        className="flex items-center space-x-3 rounded-md p-2 !text-sm !font-normal text-gray-700 hover:bg-gray-100">
+                                        <span className="font-medium text-gray-500">
+                                            {index + 1}.
+                                        </span>
+                                        <span className="truncate">{crawledUrl}</span>
+                                    </a>
+                                ))
+                            ) : (
+                                <p className="text-center text-sm font-normal text-gray-500">
+                                    No URLs were crawled for this document.
+                                </p>
+                            )}
+                        </div>
+                    </Modal>
                 </div>
             </div>
         </div>
